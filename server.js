@@ -365,8 +365,6 @@ app.get('/videos', (req, res) => {
     });
 });
 
-
-
 app.post('/delete-video', (req, res) => {
     if (!req.session.username) {
         return res.redirect('/login');
