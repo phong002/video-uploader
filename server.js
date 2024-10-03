@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const session = require('express-session');
+const { exec } = require('child_process');
 
 const app = express();
 const PORT = 3000;
@@ -18,7 +19,8 @@ app.use(session({
 app.use(express.urlencoded({ extended: true }));
 
 // Load user credentials
-const users = JSON.parse(fs.readFileSync('users.json')).users;
+const usersFilePath = path.join(__dirname, 'users.json');
+const users = JSON.parse(fs.readFileSync(usersFilePath)).users;
 
 // Set up multer for file uploads with dynamic directory creation based on user
 const storage = multer.diskStorage({
@@ -39,6 +41,8 @@ const upload = multer({ storage: storage });
 // Serve the login form
 app.get('/login', (req, res) => {
     const error = req.query.error ? 'Invalid credentials. Please try again.' : '';
+    const success = req.query.success ? 'Registration successful! Please log in.' : '';
+    
     res.send(`
         <!DOCTYPE html>
         <html lang="en">
@@ -62,6 +66,8 @@ app.get('/login', (req, res) => {
                     padding: 20px;
                     border-radius: 8px;
                     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                    max-width: 400px;
+                    width: 100%;
                 }
                 input {
                     display: block;
@@ -95,11 +101,17 @@ app.get('/login', (req, res) => {
                     <input type="password" name="password" placeholder="Password" required>
                     <button type="submit">Login</button>
                 </form>
+                <button onclick="window.location.href='/signup'">Sign Up</button>
             </div>
             <script>
                 const error = "${error}";
+                const success = "${success}";
+                
                 if (error) {
                     alert(error);
+                }
+                if (success) {
+                    alert(success);
                 }
             </script>
         </body>
@@ -107,19 +119,116 @@ app.get('/login', (req, res) => {
     `);
 });
 
+// Serve the sign-up form
+app.get('/signup', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Sign Up</title>
+            <style>
+                body {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    font-family: Arial, sans-serif;
+                    background-color: #f0f0f0;
+                }
+                .container {
+                    text-align: center;
+                    background: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                    max-width: 400px;
+                    width: 100%;
+                }
+                input {
+                    display: block;
+                    width: 80%;
+                    margin: 10px auto;
+                    padding: 10px;
+                    font-size: 16px;
+                    border-radius: 4px;
+                    border: 1px solid #ccc;
+                }
+                button {
+                    padding: 10px 20px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    background-color: #007bff;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    margin-top: 10px;
+                }
+                button:hover {
+                    background-color: #0056b3;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Sign Up</h1>
+                <form action="/signup" method="POST">
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <input type="email" name="email" placeholder="Email" required>
+                    <button type="submit">Sign Up</button>
+                </form>
+            </div>
+        </body>
+        </html>
+    `);
+});
 
-// Handle login
+
+// Handle sign-up form submission
+app.post('/signup', (req, res) => {
+    const { username, password, email } = req.body;
+
+    // Execute the signUp.js file with the username, password, and email
+    exec(`node signUp.js ${username} ${password} ${email}`, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Error: ${stderr}`);
+            return res.send(`Error signing up: ${stderr}`); // Display the error message
+        }
+
+        console.log(`Output: ${stdout}`);
+        // Redirect to login page with a success query parameter
+        res.redirect('/login?success=true');
+    });
+});
+
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    const user = users.find(u => u.username === username && u.password === password);
 
-    if (user) {
-        req.session.username = username;
-        res.redirect('/');
-    } else {
-        res.redirect('/login?error=true');
-    }
+    // Execute authenticate.js with username and password
+    exec(`node authenticate.js ${username} ${password}`, (error, stdout, stderr) => {
+
+        if (error) {
+            console.error(`Error: ${stderr}`);
+            return res.redirect('/login?error=true'); // Redirect with an error message
+        }
+
+        // If process.exit(0) was called, statusCode will be 0 (successful authentication)
+        const statusCode = parseInt(stdout.trim(), 10);
+        if (statusCode === 200) { // Successful authentication
+            console.log(`Successfully logged in as ${username}.`)
+            req.session.username = username;
+            res.redirect('/');
+        } else {
+            console.log("Login failed.")
+            res.redirect('/login?error=true'); // Redirect with an error message
+        }
+    });
 });
+
+
 
 // Handle logout
 app.get('/logout', (req, res) => {
@@ -156,6 +265,8 @@ app.get('/', (req, res) => {
                     padding: 20px;
                     border-radius: 8px;
                     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                    max-width: 400px;
+                    width: 100%;
                 }
                 input[type="file"] {
                     margin: 10px 0;
@@ -225,6 +336,8 @@ app.post('/upload', upload.single('video'), (req, res) => {
                     padding: 20px;
                     border-radius: 8px;
                     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                    max-width: 400px;
+                    width: 100%;
                 }
                 button {
                     padding: 10px 20px;
@@ -314,6 +427,8 @@ app.get('/videos', (req, res) => {
                         padding: 20px;
                         border-radius: 8px;
                         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                        max-width: 600px;
+                        width: 100%;
                     }
                     .video-item {
                         margin: 20px 0;

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MFA Setup</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        .qr-container {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        img {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="qr-container" id="qr-container">
+        <h1>Scan this QR code with your MFA app</h1>
+        <img id="qr-code" src="" alt="MFA QR Code">
+    </div>
+
+    <script>
+        // Get the QR code URL from the query string
+        const urlParams = new URLSearchParams(window.location.search);
+        const qrCodeUrl = urlParams.get('qrCodeUrl');
+
+        if (qrCodeUrl) {
+            document.getElementById('qr-code').src = qrCodeUrl;
+        } else {
+            document.getElementById('qr-container').innerText = 'QR code could not be generated.';
+        }
+    </script>
+</body>
+</html>

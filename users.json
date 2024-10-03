@@ -1,13 +1,24 @@
 {
-    "users": [
-      {
-        "username": "user1",
-        "password": "password1"
-      },
-      {
-        "username": "user2",
-        "password": "password2"
-      }
-    ]
-  }
-  
+  "users": [
+    {
+      "username": "user1",
+      "password": "password1"
+    },
+    {
+      "username": "user2",
+      "password": "password2"
+    },
+    {
+      "username": "newuser1",
+      "password": "passw0rd123"
+    },
+    {
+      "username": "newuser5",
+      "password": "newuser5"
+    },
+    {
+      "username": "new",
+      "password": "new"
+    }
+  ]
+}

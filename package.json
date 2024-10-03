@@ -1,7 +1,10 @@
 {
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.662.0",
+    "body-parser": "^1.20.3",
     "express": "^4.21.0",
     "express-session": "^1.18.0",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "qrcode": "^1.5.4"
   }
 }
