@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOTP Verification</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        input {
+            padding: 10px;
+            margin-top: 20px;
+            width: 80%;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TOTP Verification</h1>
+        <p>Enter the TOTP from your authenticator app:</p>
+        <input type="text" id="totp" placeholder="Enter TOTP">
+        <button onclick="verifyTOTP()">Verify</button>
+        <p id="message"></p>
+    </div>
+
+    <script>
+        async function verifyTOTP() {
+            const totp = document.getElementById('totp').value;
+
+            try {
+                const response = await fetch('/verify-totp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ totp })
+                });
+
+                if (response.ok) {
+                    window.location.href = '/'; // Redirect to home page after successful verification
+                } else {
+                    document.getElementById('message').innerText = 'Invalid TOTP. Please try again.';
+                }
+            } catch (error) {
+                console.error('Error verifying TOTP:', error);
+                document.getElementById('message').innerText = 'An error occurred during verification.';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Upload</title>
+    <style>
+        /* General Styling */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+
+        /* Container Styling */
+        .container {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* Heading Styling */
+        h1, h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        /* Form Styling */
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        input[type="file"] {
+            margin-bottom: 20px;
+            font-size: 1rem;
+            padding: 8px;
+            width: 100%;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            color: white;
+            background-color: #007bff;
+            transition: background-color 0.3s ease;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Logout Button Styling */
+        .logout-btn {
+            background-color: #dc3545;
+        }
+
+        .logout-btn:hover {
+            background-color: #c82333;
+        }
+
+        /* Progress Bar Styling */
+        #progress-container {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #007bff;
+            transition: width 0.4s ease;
+        }
+
+        /* Video List Styling */
+        .video-list {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .video-item {
+            margin-top: 20px;
+        }
+
+        video {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="username">Logged in as: <span id="username"></span></div>
+        <h1>Upload a Video</h1>
+        <form id="upload-form" enctype="multipart/form-data">
+            <input type="file" name="video" accept="video/*" required>
+            <button type="submit">Upload</button>
+        </form>
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <button class="logout-btn" onclick="window.location.href='/logout'">Logout</button>
+    </div>
+
+    <div class="container video-list">
+        <h2>Your Uploaded Videos</h2>
+        <div id="video-list-content"></div>
+    </div>
+
+    <script>
+        document.getElementById('upload-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const formData = new FormData(this);
+            const xhr = new XMLHttpRequest();
+
+            xhr.open('POST', '/upload', true);
+
+            // Update the progress bar
+            xhr.upload.onprogress = function(event) {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    const progressBar = document.getElementById('progress-bar');
+                    progressBar.style.width = percentComplete + '%';
+                    document.getElementById('progress-container').style.display = 'block';
+                }
+            };
+
+            // Handle the response
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    alert('Upload successful!');
+                    location.reload(); // Reload the page to show updated video list
+                } else {
+                    alert('Upload failed!');
+                    document.getElementById('progress-container').style.display = 'none';
+                    document.getElementById('progress-bar').style.width = '0%';
+                }
+            };
+
+            // Send the request
+            xhr.send(formData);
+        });
+
+        // Set the username
+        document.getElementById('username').innerText = sessionStorage.getItem('username');
+
+        // Load the uploaded videos
+        async function loadVideos() {
+            const response = await fetch('/videos');
+            const videoUrls = await response.json();
+
+            const videoListContent = document.getElementById('video-list-content');
+            videoListContent.innerHTML = videoUrls.map(url => `
+                <div class="video-item">
+                    <video width="320" height="240" controls>
+                        <source src="${url}" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+            `).join('');
+        }
+
+        loadVideos();
+    </script>
+</body>
+</html>
