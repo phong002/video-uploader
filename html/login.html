@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        /* Styling omitted for brevity */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Login</h1>
+        <form action="/login" method="POST">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <button onclick="window.location.href='/signup'">Sign Up</button>
+    </div>
+    <script>
+        const error = new URLSearchParams(window.location.search).get('error');
+        const success = new URLSearchParams(window.location.search).get('success');
+
+        if (error) {
+            alert('Invalid credentials. Please try again.');
+        }
+        if (success) {
+            alert('Registration successful! Please log in.');
+        }
+    </script>
+</body>
+</html>

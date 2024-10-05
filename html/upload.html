@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Upload</title>
+    <style>
+        /* Styling for the upload form, progress bar, and video list */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .video-list {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .video-item {
+            margin-top: 20px;
+        }
+        #progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+        #progress-bar {
+            width: 0%;
+            height: 20px;
+            background-color: #007bff;
+            border-radius: 5px;
+        }
+        .logout-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="username">Logged in as: <span id="username"></span></div>
+        <h1>Upload a Video</h1>
+        <form id="upload-form" enctype="multipart/form-data">
+            <input type="file" name="video" accept="video/*" required>
+            <button type="submit">Upload</button>
+        </form>
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <button class="logout-btn" onclick="window.location.href='/logout'">Logout</button>
+    </div>
+
+    <div class="container video-list">
+        <h2>Your Uploaded Videos</h2>
+        <div id="video-list-content"></div>
+    </div>
+
+    <script>
+        document.getElementById('upload-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const formData = new FormData(this);
+            const xhr = new XMLHttpRequest();
+
+            xhr.open('POST', '/upload', true);
+
+            // Update the progress bar
+            xhr.upload.onprogress = function(event) {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    const progressBar = document.getElementById('progress-bar');
+                    progressBar.style.width = percentComplete + '%';
+                    document.getElementById('progress-container').style.display = 'block';
+                }
+            };
+
+            // Handle the response
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    alert('Upload successful!');
+                    location.reload(); // Reload the page to show updated video list
+                } else {
+                    alert('Upload failed!');
+                    document.getElementById('progress-container').style.display = 'none';
+                    document.getElementById('progress-bar').style.width = '0%';
+                }
+            };
+
+            // Send the request
+            xhr.send(formData);
+        });
+
+        // Set the username
+        document.getElementById('username').innerText = sessionStorage.getItem('username');
+
+        // Load the uploaded videos
+        async function loadVideos() {
+            const response = await fetch('/videos');
+            const videoUrls = await response.json();
+
+            const videoListContent = document.getElementById('video-list-content');
+            videoListContent.innerHTML = videoUrls.map(url => `
+                <div class="video-item">
+                    <video width="320" height="240" controls>
+                        <source src="${url}" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+            `).join('');
+        }
+
+        loadVideos();
+    </script>
+</body>
+</html>
