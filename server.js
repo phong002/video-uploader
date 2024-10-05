@@ -5,6 +5,7 @@ const fs = require('fs');
 const session = require('express-session');
 const { exec } = require('child_process');
 const { uploadToS3, listUserVideos } = require('./s3'); // Import functions from s3.js
+const { storeVideoMetadata } = require('./dynamodb'); // Import the DynamoDB function
 
 const app = express();
 const PORT = 3000;
@@ -298,13 +299,25 @@ app.post('/upload', upload.single('video'), async (req, res) => {
 
     const filePath = req.file.path;
     const objectKey = `${req.session.username}/${req.file.filename}`;
+    const videoMetadata = {
+        username: req.session.username,
+        filename: req.file.filename,
+        size: req.file.size,
+        mimeType: req.file.mimetype,
+        uploadTime: new Date().toISOString(),
+    };
 
     try {
-        await uploadToS3(filePath, objectKey); // Upload to S3
-        res.status(200).send('Upload successful!');
+        // Upload to S3
+        await uploadToS3(filePath, objectKey);
+        
+        // Store metadata in DynamoDB
+        await storeVideoMetadata(videoMetadata);
+
+        res.status(200).send('Upload successful and metadata stored in DynamoDB!');
     } catch (err) {
-        console.error('Error uploading to S3:', err);
-        res.status(500).send('Error uploading to S3');
+        console.error('Error:', err);
+        res.status(500).send('Error uploading to S3 or storing metadata in DynamoDB');
     }
 });
 
