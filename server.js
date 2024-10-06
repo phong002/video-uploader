@@ -6,6 +6,8 @@ const { uploadToS3, listUserVideos } = require('./s3'); // Import functions from
 const { storeVideoMetadata } = require('./dynamodb'); // Import the DynamoDB function
 const { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 const secretsManager = new SecretsManagerClient({ region: 'ap-southeast-2' });
+const { DeleteObjectCommand } = require('@aws-sdk/client-s3'); // Import the command to delete objects from S3
+const { CognitoIdentityProviderClient, AdminListGroupsForUserCommand, InitiateAuthCommand, AuthFlowType } = require('@aws-sdk/client-cognito-identity-provider');
 
 const path = require('path');
 const Cognito = require("@aws-sdk/client-cognito-identity-provider");
@@ -16,6 +18,7 @@ const app = express();
 const PORT = 3000;
 const clientId = "gcuu9h0ce7dj7f9k7f76mffbs"; // Replace with your Cognito App Client ID
 const userPoolId = 'ap-southeast-2_NfWB7liGw'; // Replace with your User Pool ID
+const client = new CognitoIdentityProviderClient({ region: 'ap-southeast-2' });
 
 // Store the user's secret code temporarily (in-memory storage, not for production)
 let userSecretCode = '';
@@ -45,10 +48,15 @@ app.get('/login', (req, res) => {
 // Endpoint to get the logged-in user's username
 app.get('/current-user', (req, res) => {
     if (!req.session.username) {
-        return res.status(403).send('Not logged in');
+        return res.status(403).send({ error: 'Not logged in' });
     }
-    res.json({ username: req.session.username });
+
+    res.json({
+        username: req.session.username,
+        userGroups: req.session.userGroups || [] // Return the user groups stored in the session
+    });
 });
+
 
 // Serve the signup page
 app.get('/signup', (req, res) => {
@@ -70,6 +78,18 @@ app.post('/signup', (req, res) => {
 
         try {
             const client = new Cognito.CognitoIdentityProviderClient({ region: 'ap-southeast-2' });
+            
+            // Add user to the StandardUser group
+            const addUserToGroupCommand = new Cognito.AdminAddUserToGroupCommand({
+                UserPoolId: 'ap-southeast-2_NfWB7liGw', // Replace with your User Pool ID
+                Username: username,
+                GroupName: 'StandardUser', // Group to which the user is added by default
+            });
+
+            await client.send(addUserToGroupCommand);
+            console.log(`User ${username} added to group StandardUser.`);
+
+            // Initiate authentication to set up MFA
             const initiateAuthCommand = new Cognito.InitiateAuthCommand({
                 AuthFlow: Cognito.AuthFlowType.USER_PASSWORD_AUTH,
                 AuthParameters: {
@@ -102,8 +122,8 @@ app.post('/signup', (req, res) => {
                 res.redirect('/login?success=true');
             }
         } catch (mfaError) {
-            console.error("Error during MFA setup:", mfaError);
-            res.send('Error during MFA setup.');
+            console.error("Error during MFA setup or adding user to group:", mfaError);
+            res.send('Error during MFA setup or group assignment.');
         }
     });
 });
@@ -194,9 +214,14 @@ async function retrieveTotpSecretFromSecretsManager(username) {
 
 app.post('/verify-totp', async (req, res) => {
     const { totp } = req.body;
+
     const username = req.session.username;
+    if (!username) {
+        return res.status(403).send('Not logged in');
+    }
 
     try {
+        // Retrieve the TOTP secret from Secrets Manager
         const storedTotpSecret = await retrieveTotpSecretFromSecretsManager(username);
 
         if (!storedTotpSecret) {
@@ -206,13 +231,12 @@ app.post('/verify-totp', async (req, res) => {
         const verified = speakeasy.totp.verify({
             secret: storedTotpSecret,
             encoding: 'base32',
-            token: totp
+            token: totp,
         });
 
         if (verified) {
-            // Mark the user as authenticated and redirect to the home page
-            req.session.isTotpVerified = true;
-            res.status(200).send('TOTP verified successfully.');
+            req.session.isTotpVerified = true; // Mark the user as TOTP verified
+            res.redirect('/'); // Redirect to the main page
         } else {
             res.status(400).send('Invalid TOTP.');
         }
@@ -222,12 +246,10 @@ app.post('/verify-totp', async (req, res) => {
     }
 });
 
-// Handle login form submission
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
-    // Execute authenticate.js with username and password
-    exec(`node authenticate.js ${username} ${password}`, (error, stdout, stderr) => {
+    exec(`node authenticate.js ${username} ${password}`, async (error, stdout, stderr) => {
         if (error) {
             console.error(`Error: ${stderr}`);
             return res.redirect('/login?error=true');
@@ -236,8 +258,44 @@ app.post('/login', (req, res) => {
         const statusCode = parseInt(stdout.trim(), 10);
         if (statusCode === 200) {
             req.session.username = username;
-            // Redirect to TOTP verification page after successful login
-            res.redirect('/totp.html');
+
+            // Get user groups from Cognito
+            try {
+                const params = {
+                    UserPoolId: 'ap-southeast-2_NfWB7liGw', // Your User Pool ID
+                    Username: username,
+                };
+                const command = new Cognito.AdminListGroupsForUserCommand(params);
+                
+                const groupData = await client.send(command);
+
+                // Store user groups in the session
+                req.session.userGroups = groupData.Groups.map(group => group.GroupName);
+
+                // Check if TOTP (MFA) is required
+                const initiateAuthCommand = new Cognito.InitiateAuthCommand({
+                    AuthFlow: Cognito.AuthFlowType.USER_PASSWORD_AUTH,
+                    AuthParameters: {
+                        USERNAME: username,
+                        PASSWORD: password,
+                    },
+                    ClientId: clientId,
+                });
+
+                const authRes = await client.send(initiateAuthCommand);
+
+                if (authRes.ChallengeName === 'SOFTWARE_TOKEN_MFA' || authRes.ChallengeName === 'MFA_SETUP') {
+                    req.session.isTotpVerified = false;
+                    return res.redirect('/totp.html');
+                }
+
+                // If no MFA is required, mark the user as verified
+                req.session.isTotpVerified = true;
+                res.redirect('/');
+            } catch (groupError) {
+                console.error('Error retrieving user groups:', groupError);
+                res.redirect('/login?error=true');
+            }
         } else {
             res.redirect('/login?error=true');
         }
@@ -253,18 +311,18 @@ app.get('/logout', (req, res) => {
 // Serve the upload page (restricted to logged-in users with verified TOTP)
 app.get('/', async (req, res) => {
     if (!req.session.username || !req.session.isTotpVerified) {
-        return res.redirect('/login');
+        return res.redirect('/login'); // Redirect to login if not signed in or TOTP not verified
     }
 
     try {
-        // Retrieve the list of videos for the logged-in user
-        // await listUserVideos(req.session.username);
+        // Render the upload page
         res.sendFile(path.join(__dirname, 'public', 'upload.html'));
     } catch (error) {
-        console.error('Error retrieving videos:', error);
-        res.status(500).send('Error retrieving videos.');
+        console.error('Error loading the upload page:', error);
+        res.status(500).send('Error loading the upload page.');
     }
 });
+
 
 // API endpoint to get the list of user videos
 app.get('/videos', async (req, res) => {
@@ -309,6 +367,31 @@ app.post('/upload', upload.single('video'), async (req, res) => {
     } catch (err) {
         console.error('Error:', err);
         res.status(500).send('Error uploading to S3 or storing metadata in DynamoDB');
+    }
+});
+
+// Endpoint to delete a video (admin users only)
+app.delete('/videos/:videoName', async (req, res) => {
+    if (!req.session.username || !req.session.userGroups || !req.session.userGroups.includes('Admin')) {
+        return res.status(403).send('Access denied: Admins only.');
+    }
+
+    const videoName = req.params.videoName;
+    const objectKey = `${req.session.username}/${videoName}`;
+
+    try {
+        // Delete the video from the S3 bucket
+        const deleteParams = {
+            Bucket: bucketName,
+            Key: objectKey,
+        };
+        await s3Client.send(new DeleteObjectCommand(deleteParams));
+
+        console.log(`Video ${videoName} deleted successfully.`);
+        res.status(200).send(`Video ${videoName} deleted successfully.`);
+    } catch (error) {
+        console.error('Error deleting video:', error);
+        res.status(500).send('Error deleting video.');
     }
 });
 

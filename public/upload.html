@@ -10,7 +10,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
         body {
@@ -19,17 +19,17 @@
             align-items: center;
             flex-direction: column;
             min-height: 100vh;
-            background-color: #f0f0f0;
+            background-color: #f4f4f9;
             padding: 20px;
         }
 
         /* Container Styling */
         .container {
             background: #ffffff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            max-width: 500px;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
             width: 100%;
             margin-bottom: 20px;
             text-align: center;
@@ -39,6 +39,13 @@
         h1, h2 {
             margin-bottom: 20px;
             color: #333;
+            font-size: 1.8rem;
+        }
+
+        .username, .user-type {
+            margin-bottom: 10px;
+            font-size: 1rem;
+            color: #555;
         }
 
         /* Form Styling */
@@ -51,25 +58,29 @@
         input[type="file"] {
             margin-bottom: 20px;
             font-size: 1rem;
-            padding: 8px;
+            padding: 10px;
             width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            outline: none;
         }
 
         button {
-            padding: 10px 20px;
+            padding: 12px 25px;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 1rem;
             color: white;
             background-color: #007bff;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.3s ease, transform 0.3s ease;
             width: 100%;
             margin-top: 10px;
         }
 
         button:hover {
             background-color: #0056b3;
+            transform: scale(1.05);
         }
 
         /* Logout Button Styling */
@@ -84,9 +95,9 @@
         /* Progress Bar Styling */
         #progress-container {
             width: 100%;
-            height: 20px;
-            background-color: #e9ecef;
-            border-radius: 5px;
+            height: 25px;
+            background-color: #e0e0e0;
+            border-radius: 12px;
             overflow: hidden;
             margin-top: 20px;
         }
@@ -95,33 +106,57 @@
             height: 100%;
             width: 0%;
             background-color: #007bff;
+            border-radius: 12px;
             transition: width 0.4s ease;
         }
 
         /* Video List Styling */
         .video-list {
             background: #ffffff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            max-width: 500px;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
             width: 100%;
             text-align: center;
         }
 
         .video-item {
             margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
 
         video {
             max-width: 100%;
             border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        /* Delete Button Styling */
+        .delete-btn {
+            padding: 8px 15px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.3s ease;
+        }
+
+        .delete-btn:hover {
+            background-color: #c82333;
+            transform: scale(1.05);
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="username">Logged in as: <span id="username"></span></div>
+        <div class="user-type">User Type: <span id="user-type"></span></div>
         <h1>Upload a Video</h1>
         <form id="upload-form" enctype="multipart/form-data">
             <input type="file" name="video" accept="video/*" required>
@@ -139,22 +174,80 @@
     </div>
 
     <script>
-        // Fetch and display the logged-in user's username
-        async function fetchUsername() {
+        // Fetch and display the logged-in user's username and group information
+        async function fetchUserInfo() {
             try {
                 const response = await fetch('/current-user');
                 if (!response.ok) {
-                    throw new Error('Failed to fetch username');
+                    throw new Error('Failed to fetch user info');
                 }
                 const data = await response.json();
                 document.getElementById('username').innerText = data.username;
+
+                // Determine the user type
+                let userType = 'StandardUser'; // Default to StandardUser
+                if (data.userGroups.includes('Admin')) {
+                    userType = 'Admin';
+                }
+
+                // Display user type
+                document.getElementById('user-type').innerText = userType;
+
+                // Store user role in session storage
+                const isAdmin = userType === 'Admin';
+                sessionStorage.setItem('isAdmin', isAdmin);
             } catch (error) {
-                console.error('Error fetching username:', error);
+                console.error('Error fetching user info:', error);
                 document.getElementById('username').innerText = 'Unknown User';
+                document.getElementById('user-type').innerText = 'Unknown';
             }
         }
 
-        fetchUsername();
+        // Load the uploaded videos and show delete button for admins
+        async function loadVideos() {
+            try {
+                const response = await fetch('/videos');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch videos');
+                }
+                const videoData = await response.json();
+                const isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+
+                const videoListContent = document.getElementById('video-list-content');
+                videoListContent.innerHTML = videoData.map(video => `
+                    <div class="video-item">
+                        <p>${video.name}</p>
+                        <video width="320" height="240" controls>
+                            <source src="${video.url}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        ${isAdmin ? `<button class="delete-btn" onclick="deleteVideo('${video.name}')">Delete</button>` : ''}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading videos:', error);
+            }
+        }
+
+        // Function to delete a video
+        async function deleteVideo(videoName) {
+            try {
+                const response = await fetch(`/videos/${videoName}`, {
+                    method: 'DELETE',
+                });
+
+                if (response.ok) {
+                    alert('Video deleted successfully.');
+                    loadVideos(); // Refresh the video list
+                } else {
+                    const errorText = await response.text();
+                    alert(`Error deleting video: ${errorText}`);
+                }
+            } catch (error) {
+                console.error('Error deleting video:', error);
+                alert('Error deleting video.');
+            }
+        }
 
         document.getElementById('upload-form').addEventListener('submit', function(event) {
             event.preventDefault();
@@ -178,7 +271,7 @@
             xhr.onload = function() {
                 if (xhr.status === 200) {
                     alert('Upload successful!');
-                    location.reload(); // Reload the page to show updated video list
+                    loadVideos(); // Reload the video list to show the new video
                 } else {
                     alert('Upload failed!');
                     document.getElementById('progress-container').style.display = 'none';
@@ -190,23 +283,8 @@
             xhr.send(formData);
         });
 
-        // Load the uploaded videos
-        async function loadVideos() {
-            const response = await fetch('/videos');
-            const videoData = await response.json();
-
-            const videoListContent = document.getElementById('video-list-content');
-            videoListContent.innerHTML = videoData.map(video => `
-                <div class="video-item">
-                    <p>${video.name}</p> <!-- Display the video name -->
-                    <video width="320" height="240" controls>
-                        <source src="${video.url}" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
-                </div>
-            `).join('');
-        }
-
+        // Call the functions to fetch user info and load videos
+        fetchUserInfo();
         loadVideos();
     </script>
 </body>

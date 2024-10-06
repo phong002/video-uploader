@@ -2,6 +2,8 @@ const Cognito = require("@aws-sdk/client-cognito-identity-provider");
 const qrcode = require('qrcode');
 
 const clientId = "gcuu9h0ce7dj7f9k7f76mffbs"; // Obtain from the AWS console
+const userPoolId = 'ap-southeast-2_NfWB7liGw'; // Replace with your User Pool ID
+const defaultGroupName = 'StandardUser'; // Name of the group to assign users to by default
 
 // Get the username, password, and email from command-line arguments
 const username = process.argv[2];
@@ -24,14 +26,24 @@ async function main() {
     const signUpRes = await client.send(signUpCommand);
     console.log("Sign up successful:", signUpRes);
 
-    // After successful sign up, confirm the user to allow MFA setup
+    // After successful sign-up, confirm the user to allow MFA setup
     const confirmCommand = new Cognito.AdminConfirmSignUpCommand({
-      UserPoolId: 'ap-southeast-2_NfWB7liGw', // Replace with your User Pool ID
+      UserPoolId: userPoolId,
       Username: username,
     });
 
     await client.send(confirmCommand);
     console.log("User confirmed.");
+
+    // Add the user to the 'StandardUser' group by default
+    const addUserToGroupCommand = new Cognito.AdminAddUserToGroupCommand({
+      UserPoolId: userPoolId,
+      Username: username,
+      GroupName: defaultGroupName,
+    });
+
+    await client.send(addUserToGroupCommand);
+    console.log(`User ${username} added to group ${defaultGroupName}.`);
 
     // Set up MFA
     const initiateAuthCommand = new Cognito.InitiateAuthCommand({
@@ -44,7 +56,7 @@ async function main() {
     });
 
     const authRes = await client.send(initiateAuthCommand);
-    
+
     if (authRes.ChallengeName === 'MFA_SETUP' || authRes.ChallengeName === 'SOFTWARE_TOKEN_MFA') {
       const session = authRes.Session;
 
