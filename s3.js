@@ -1,4 +1,5 @@
-const { S3Client, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const bucketName = 'n11452331-s3-bucket';
 
@@ -23,7 +24,7 @@ async function uploadToS3(fileBuffer, objectKey) {
     }
 }
 
-// Function to list videos in the user's folder
+// Function to list videos in the user's folder and generate presigned URLs
 async function listUserVideos(username) {
     try {
         const response = await s3Client.send(
@@ -33,12 +34,26 @@ async function listUserVideos(username) {
             })
         );
 
-        // Extract the URLs of the videos
-        const videoUrls = response.Contents ? response.Contents.map((item) => {
-            return `https://${bucketName}.s3.${s3Client.config.region}.amazonaws.com/${item.Key}`;
-        }) : [];
+        // Log the response to inspect the objects returned by S3
+        console.log('S3 List Objects Response:', response.Contents);
 
-        return videoUrls;
+        // Create a Set to store unique object keys and prevent duplicates
+        const uniqueKeys = new Set();
+
+        // Generate presigned URLs for each unique video object
+        const videoUrls = response.Contents ? await Promise.all(response.Contents.map(async (item) => {
+            if (!uniqueKeys.has(item.Key)) {
+                uniqueKeys.add(item.Key); // Add to the Set to keep track of seen keys
+                const command = new GetObjectCommand({
+                    Bucket: bucketName,
+                    Key: item.Key,
+                });
+                return await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // URL expires in 1 hour
+            }
+        })) : [];
+
+        // Filter out any undefined entries in case of duplicates
+        return videoUrls.filter(url => url);
     } catch (err) {
         console.log('Error listing videos from S3:', err);
         throw err;

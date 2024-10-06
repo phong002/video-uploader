@@ -168,7 +168,7 @@ app.get('/', async (req, res) => {
 
     try {
         // Retrieve the list of videos for the logged-in user
-        await listUserVideos(req.session.username);
+        // await listUserVideos(req.session.username);
         res.sendFile(path.join(__dirname, 'public', 'upload.html'));
     } catch (error) {
         console.error('Error retrieving videos:', error);
