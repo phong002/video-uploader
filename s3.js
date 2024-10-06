@@ -25,39 +25,30 @@ async function uploadToS3(fileBuffer, objectKey) {
 }
 
 // Function to list videos in the user's folder and generate presigned URLs
+// Assuming this function is in s3.js
 async function listUserVideos(username) {
     try {
         const response = await s3Client.send(
             new ListObjectsV2Command({
                 Bucket: bucketName,
-                Prefix: `${username}/`, // Only list objects in the user's folder
+                Prefix: `${username}/`, // List objects within the user's folder
             })
         );
 
-        // Log the response to inspect the objects returned by S3
-        console.log('S3 List Objects Response:', response.Contents);
+        // Generate a list of video URLs and names
+        const videoData = response.Contents ? response.Contents.map((item) => {
+            return {
+                url: `https://${bucketName}.s3.${s3Client.config.region}.amazonaws.com/${item.Key}`,
+                name: item.Key.split('/').pop() // Extract the filename from the object key
+            };
+        }) : [];
 
-        // Create a Set to store unique object keys and prevent duplicates
-        const uniqueKeys = new Set();
-
-        // Generate presigned URLs for each unique video object
-        const videoUrls = response.Contents ? await Promise.all(response.Contents.map(async (item) => {
-            if (!uniqueKeys.has(item.Key)) {
-                uniqueKeys.add(item.Key); // Add to the Set to keep track of seen keys
-                const command = new GetObjectCommand({
-                    Bucket: bucketName,
-                    Key: item.Key,
-                });
-                return await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // URL expires in 1 hour
-            }
-        })) : [];
-
-        // Filter out any undefined entries in case of duplicates
-        return videoUrls.filter(url => url);
+        return videoData;
     } catch (err) {
-        console.log('Error listing videos from S3:', err);
+        console.error('Error listing videos from S3:', err);
         throw err;
     }
 }
+
 
 module.exports = { uploadToS3, listUserVideos };

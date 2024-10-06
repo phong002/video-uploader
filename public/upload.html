@@ -139,6 +139,23 @@
     </div>
 
     <script>
+        // Fetch and display the logged-in user's username
+        async function fetchUsername() {
+            try {
+                const response = await fetch('/current-user');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch username');
+                }
+                const data = await response.json();
+                document.getElementById('username').innerText = data.username;
+            } catch (error) {
+                console.error('Error fetching username:', error);
+                document.getElementById('username').innerText = 'Unknown User';
+            }
+        }
+
+        fetchUsername();
+
         document.getElementById('upload-form').addEventListener('submit', function(event) {
             event.preventDefault();
 
@@ -173,19 +190,17 @@
             xhr.send(formData);
         });
 
-        // Set the username
-        document.getElementById('username').innerText = sessionStorage.getItem('username');
-
         // Load the uploaded videos
         async function loadVideos() {
             const response = await fetch('/videos');
-            const videoUrls = await response.json();
+            const videoData = await response.json();
 
             const videoListContent = document.getElementById('video-list-content');
-            videoListContent.innerHTML = videoUrls.map(url => `
+            videoListContent.innerHTML = videoData.map(video => `
                 <div class="video-item">
+                    <p>${video.name}</p> <!-- Display the video name -->
                     <video width="320" height="240" controls>
-                        <source src="${url}" type="video/mp4">
+                        <source src="${video.url}" type="video/mp4">
                         Your browser does not support the video tag.
                     </video>
                 </div>

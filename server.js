@@ -42,6 +42,14 @@ app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+// Endpoint to get the logged-in user's username
+app.get('/current-user', (req, res) => {
+    if (!req.session.username) {
+        return res.status(403).send('Not logged in');
+    }
+    res.json({ username: req.session.username });
+});
+
 // Serve the signup page
 app.get('/signup', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'signup.html'));
@@ -266,13 +274,14 @@ app.get('/videos', async (req, res) => {
 
     try {
         // Retrieve the list of videos for the logged-in user
-        const videoUrls = await listUserVideos(req.session.username);
-        res.json(videoUrls);
+        const videoData = await listUserVideos(req.session.username);
+        res.json(videoData); // Return an array of objects with URLs and names
     } catch (error) {
         console.error('Error retrieving videos:', error);
         res.status(500).send('Error retrieving videos.');
     }
 });
+
 
 // Handle file upload (restricted to logged-in users)
 app.post('/upload', upload.single('video'), async (req, res) => {
