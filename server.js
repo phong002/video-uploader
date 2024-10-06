@@ -4,6 +4,9 @@ const session = require('express-session');
 const { exec } = require('child_process');
 const { uploadToS3, listUserVideos } = require('./s3'); // Import functions from s3.js
 const { storeVideoMetadata } = require('./dynamodb'); // Import the DynamoDB function
+const { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+const secretsManager = new SecretsManagerClient({ region: 'ap-southeast-2' });
+
 const path = require('path');
 const Cognito = require("@aws-sdk/client-cognito-identity-provider");
 const qrcode = require('qrcode');
@@ -44,19 +47,17 @@ app.get('/signup', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'signup.html'));
 });
 
-// Handle sign-up form submission
 app.post('/signup', (req, res) => {
     const { username, password, email } = req.body;
 
-    // Execute the signUp.js file with the username, password, and email
-    exec(`node signUp.js ${username} ${password} ${email}`, async (error, stdout, stderr) => {
+    // Execute the cognito.js file with the username, password, and email
+    exec(`node cognito.js ${username} ${password} ${email}`, async (error, stdout, stderr) => {
         if (error) {
             console.error(`Error: ${stderr}`);
             return res.send(`Error signing up: ${stderr}`);
         }
 
         console.log(`Output: ${stdout}`);
-
         req.session.username = username;
 
         try {
@@ -83,6 +84,10 @@ app.post('/signup', (req, res) => {
                 userSecretCode = associateRes.SecretCode;
 
                 console.log("MFA setup initialized. Secret Code:", userSecretCode);
+
+                // Store TOTP secret in Secrets Manager
+                await storeTotpSecretInSecretsManager(username, userSecretCode);
+
                 res.redirect('/mfa-setup.html');
             } else {
                 console.log("MFA setup not required.");
@@ -94,6 +99,50 @@ app.post('/signup', (req, res) => {
         }
     });
 });
+
+async function storeTotpSecretInSecretsManager(username, totpSecret) {
+    const secretName = 'n11452331-secret';
+    
+    try {
+        // Retrieve the existing secrets
+        let secrets = [];
+        try {
+            const getSecretCommand = new GetSecretValueCommand({ SecretId: secretName });
+            const existingSecretData = await secretsManager.send(getSecretCommand);
+            secrets = JSON.parse(existingSecretData.SecretString);
+        } catch (error) {
+            if (error.name !== 'ResourceNotFoundException') {
+                console.error('Error retrieving existing secrets:', error);
+                throw error;
+            }
+            // If the secret doesn't exist, initialize an empty array
+        }
+
+        // Ensure the secrets are stored in an array format and find the user's entry
+        if (!Array.isArray(secrets)) {
+            secrets = [];
+        }
+        const userIndex = secrets.findIndex(item => item.user === username);
+
+        // If user exists, update their totpSecret; otherwise, add a new entry
+        if (userIndex >= 0) {
+            secrets[userIndex].totpSecret = totpSecret;
+        } else {
+            secrets.push({ user: username, totpSecret: totpSecret });
+        }
+
+        // Store the updated secrets array in Secrets Manager
+        const putSecretCommand = new PutSecretValueCommand({
+            SecretId: secretName,
+            SecretString: JSON.stringify(secrets),
+        });
+        await secretsManager.send(putSecretCommand);
+
+        console.log('TOTP secret stored/updated successfully in Secrets Manager.');
+    } catch (error) {
+        console.error('Error storing TOTP secret in Secrets Manager:', error);
+    }
+}
 
 // Endpoint to generate and return the MFA QR code data URL
 app.get('/mfa-setup-qr', (req, res) => {
@@ -113,22 +162,55 @@ app.get('/mfa-setup-qr', (req, res) => {
     });
 });
 
-// Handle TOTP verification
-app.post('/verify-totp', (req, res) => {
+async function retrieveTotpSecretFromSecretsManager(username) {
+    const secretName = 'n11452331-secret';
+    
+    try {
+        const getSecretCommand = new GetSecretValueCommand({ SecretId: secretName });
+        const data = await secretsManager.send(getSecretCommand);
+        const secrets = JSON.parse(data.SecretString);
+
+        // Find the user's TOTP secret in the array
+        const userSecret = secrets.find(item => item.user === username);
+        if (userSecret && userSecret.totpSecret) {
+            return userSecret.totpSecret;
+        } else {
+            console.error('TOTP secret not found for user:', username);
+            return null;
+        }
+    } catch (error) {
+        console.error('Error retrieving TOTP secret from Secrets Manager:', error);
+        return null;
+    }
+}
+
+app.post('/verify-totp', async (req, res) => {
     const { totp } = req.body;
+    const username = req.session.username;
 
-    const verified = speakeasy.totp.verify({
-        secret: userSecretCode,
-        encoding: 'base32',
-        token: totp
-    });
+    try {
+        const storedTotpSecret = await retrieveTotpSecretFromSecretsManager(username);
 
-    if (verified) {
-        // Mark the user as authenticated and redirect to the home page
-        req.session.isTotpVerified = true;
-        res.status(200).send('TOTP verified successfully.');
-    } else {
-        res.status(400).send('Invalid TOTP.');
+        if (!storedTotpSecret) {
+            return res.status(400).send('TOTP secret not found.');
+        }
+
+        const verified = speakeasy.totp.verify({
+            secret: storedTotpSecret,
+            encoding: 'base32',
+            token: totp
+        });
+
+        if (verified) {
+            // Mark the user as authenticated and redirect to the home page
+            req.session.isTotpVerified = true;
+            res.status(200).send('TOTP verified successfully.');
+        } else {
+            res.status(400).send('Invalid TOTP.');
+        }
+    } catch (error) {
+        console.error('Error during TOTP verification:', error);
+        res.status(500).send('Error during TOTP verification.');
     }
 });
 
